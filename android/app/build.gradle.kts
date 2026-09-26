@@ -14,8 +14,8 @@ android {
         applicationId = "com.husarp.browsertwins"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.2.3"
+        versionCode = 6
+        versionName = "0.3.0"
     }
 
     // The release key lives outside the project (never published): its file and passwords are in

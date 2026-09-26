@@ -1,5 +1,6 @@
 package com.husarp.browsertwins
 
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -34,17 +35,28 @@ import androidx.compose.ui.platform.LocalContext
 
 // What the screens share: the settings, and a tick that goes up whenever something changed so every
 // screen re-reads what is true now. Same idea as LinkPilot's Model, smaller.
-class Model(val store: Store) {
+class Model(val app: Context) {
+    val store = Store(app)
     var tick by mutableIntStateOf(0)
-    fun changed() { tick++ }
+    fun changed() {
+        tick++
+        Shortcuts.sync(app, store)   // keep the long-press menu in step with the profiles
+    }
 }
 
 class MainActivity : ComponentActivity() {
+    private lateinit var model: Model
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val model = Model(Store(applicationContext))
+        model = Model(applicationContext)
         setContent { App(model) }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        model.changed()   // a profile may have been removed from Settings, or a clone uninstalled
     }
 }
 
