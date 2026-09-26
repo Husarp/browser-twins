@@ -206,6 +206,16 @@ private fun ProfileRow(m: Model, p: Profile, onEdit: () -> Unit, onUpdate: () ->
         appBitmap(ctx, p.sourcePkg)?.let { Recolour.apply(it, p.hue, p.strength, p.brightness).asImageBitmap() }
     }
     val installed = remember(p.clonePkg, m.tick) { Apps.isInstalled(ctx, p.clonePkg) }
+    fun dropRecord() {
+        m.store.profiles = m.store.profiles.filterNot { it.id == p.id }
+        m.store.addLog("${p.name} removed")
+        m.changed()
+    }
+    // Remove uninstalls the clone; the profile is dropped only once Android reports it uninstalled
+    // (its uninstall dialog is the confirmation), so cancelling leaves the profile in place.
+    val uninstall = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        if (res.resultCode == android.app.Activity.RESULT_OK) dropRecord()
+    }
     // The original was updated if its installed version differs from the one this clone was built from.
     val newVersion = remember(p.sourcePkg, m.tick) { if (Apps.isInstalled(ctx, p.sourcePkg)) Apps.version(ctx, p.sourcePkg) else "" }
     val updateReady = installed && newVersion.isNotEmpty() && newVersion != p.madeFromVersion
@@ -235,11 +245,10 @@ private fun ProfileRow(m: Model, p: Profile, onEdit: () -> Unit, onUpdate: () ->
                 }) { Text("Open") }
                 TextButton(onClick = onEdit) { Text("Edit") }
                 TextButton(onClick = {
-                    // Uninstall the clone (Android asks its own "Uninstall?"), then drop the record.
-                    if (installed) ctx.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:${p.clonePkg}")))
-                    m.store.profiles = m.store.profiles.filterNot { it.id == p.id }
-                    m.store.addLog("${p.name} removed")
-                    m.changed()
+                    if (installed) uninstall.launch(
+                        Intent(Intent.ACTION_UNINSTALL_PACKAGE, Uri.parse("package:${p.clonePkg}"))
+                            .putExtra(Intent.EXTRA_RETURN_RESULT, true))
+                    else dropRecord()   // clone already gone - just drop the leftover record
                 }) { Text("Remove") }
             }
         }
