@@ -39,6 +39,11 @@ object Apps {
         ctx.packageManager.getApplicationIcon(pkg)
     } catch (_: Exception) { null }
 
+    // Whether a package is installed (clones have a launcher, so they're visible to us).
+    fun isInstalled(ctx: Context, pkg: String): Boolean = try {
+        ctx.packageManager.getPackageInfo(pkg, 0); true
+    } catch (_: Exception) { false }
+
     // The APK files of an installed app. Modern apps ship several (a base APK plus splits); the clone
     // engine has to handle all of them. Returns the base first.
     fun apkPaths(ctx: Context, pkg: String): List<String> = try {

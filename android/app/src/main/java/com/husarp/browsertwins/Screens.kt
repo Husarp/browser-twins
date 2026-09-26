@@ -178,17 +178,24 @@ private fun ProfileRow(m: Model, p: Profile) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) Image(icon, null, Modifier.size(40.dp)) else Spacer(Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
+            val installed = remember(p.clonePkg, m.tick) { Apps.isInstalled(ctx, p.clonePkg) }
             Column(Modifier.weight(1f)) {
                 Text(p.name, style = MaterialTheme.typography.titleMedium)
-                Text("${Apps.label(ctx, p.sourcePkg)} ${p.madeFromVersion}",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text(if (installed) "${Apps.label(ctx, p.sourcePkg)} ${p.madeFromVersion}" else "Not installed - tap Remove",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (installed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            if (installed) TextButton(onClick = {
+                ctx.packageManager.getLaunchIntentForPackage(p.clonePkg)?.let { ctx.startActivity(it) }
+            }) { Text("Open") }
             TextButton(onClick = {
+                // Uninstall the clone (Android asks its own "Uninstall?"), then drop the record.
+                if (installed) ctx.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:${p.clonePkg}")))
                 m.store.profiles = m.store.profiles.filterNot { it.id == p.id }
-                m.store.addLog("${p.name} deleted")
+                m.store.addLog("${p.name} removed")
                 m.changed()
-            }) { Text("Delete") }
+            }) { Text("Remove") }
         }
     }
 }
