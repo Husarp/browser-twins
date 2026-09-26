@@ -1,12 +1,16 @@
 package com.husarp.browsertwins
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.android.apksig.ApkSigner
 import com.android.apksig.KeyConfig
 import com.reandroid.apk.ApkModule
+import com.reandroid.archive.ByteInputSource
 import com.reandroid.arsc.chunk.xml.AndroidManifestBlock
 import com.reandroid.arsc.chunk.xml.ResXmlAttribute
 import com.reandroid.arsc.chunk.xml.ResXmlElement
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 // The clone engine, on the phone, no root. Proven on the PC (see TODO.md) with the same library calls:
@@ -22,7 +26,8 @@ object Cloner {
 
     // Builds the renamed, signed APK parts for a clone and returns the files (base first). Does NOT
     // install - the caller hands them to Installer. Runs off the main thread.
-    fun build(ctx: Context, source: AppInfo, clonePkg: String, label: String): List<File> {
+    fun build(ctx: Context, source: AppInfo, clonePkg: String, label: String,
+              hue: Int = 0, strength: Int = 100, brightness: Int = 100): List<File> {
         val apks = Apps.apkPaths(ctx, source.pkg).map { File(it) }
         if (apks.isEmpty()) throw Failed("Could not read ${source.label}'s APK.")
 
@@ -35,7 +40,10 @@ object Cloner {
             val oldPkg = module.packageName
             module.setPackageName(clonePkg)
             fixManifest(module.androidManifest, oldPkg, clonePkg)
-            if (module.isBaseModule) module.androidManifest.setApplicationLabel(label)
+            if (module.isBaseModule) {
+                module.androidManifest.setApplicationLabel(label)
+                if (hue != 0 || strength != 100 || brightness != 100) recolourIcon(module, hue, strength, brightness)
+            }
 
             val renamed = File(work, "unsigned-${apk.name}")
             module.writeApk(renamed)
@@ -48,6 +56,25 @@ object Cloner {
             if (apk.name.startsWith("base")) out.add(0, signed) else out.add(signed)
         }
         return out
+    }
+
+    // Recolour the launcher icon inside the clone: every PNG under res/mipmap (where launcher icons
+    // live) is decoded, recoloured like LinkPilot's icons, and written back. Vector-only icons have no
+    // PNG to recolour, so they keep the original look (see TODO).
+    private fun recolourIcon(module: ApkModule, hue: Int, strength: Int, brightness: Int) {
+        for (src in module.listInputSources().toList()) {
+            val name = src.name
+            if (!name.startsWith("res/mipmap") || !name.endsWith(".png")) continue
+            try {
+                val bytes = src.openStream().use { it.readBytes() }
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
+                val out = ByteArrayOutputStream()
+                Recolour.apply(bmp, hue, strength, brightness).compress(Bitmap.CompressFormat.PNG, 100, out)
+                module.add(ByteInputSource(out.toByteArray(), name))   // replaces the entry of the same name
+            } catch (_: Exception) {
+                // leave that image as it is
+            }
+        }
     }
 
     private fun sign(input: File, output: File, signer: Keys.Signer) {

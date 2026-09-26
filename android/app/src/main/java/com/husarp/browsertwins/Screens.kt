@@ -270,7 +270,7 @@ private fun NewProfileFlow(m: Model, close: () -> Unit) {
                             val clonePkg = Cloner.clonePackageName(app.pkg, m.store.profiles)
                             Thread {
                                 try {
-                                    val parts = Cloner.build(ctx, app, clonePkg, name)
+                                    val parts = Cloner.build(ctx, app, clonePkg, name, hue.toInt(), strength.toInt(), brightness.toInt())
                                     Installer.install(ctx, parts) { ok, m2 ->
                                         if (ok) {
                                             m.store.profiles = m.store.profiles + Profile(
