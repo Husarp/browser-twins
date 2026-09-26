@@ -14,8 +14,8 @@ android {
         applicationId = "com.husarp.browsertwins"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.6.1"
+        versionCode = 16
+        versionName = "0.6.2"
     }
 
     // The release key lives outside the project (never published): its file and passwords are in
@@ -38,7 +38,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
