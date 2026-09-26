@@ -55,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -126,6 +127,21 @@ private fun NumberedSteps(steps: List<String>) {
 
 private fun appBitmap(ctx: android.content.Context, pkg: String): Bitmap? =
     Apps.icon(ctx, pkg)?.toBitmap(96, 96)
+
+// App icons decoded once, off the main thread, and cached - so the app list scrolls smoothly.
+private val iconCache = java.util.concurrent.ConcurrentHashMap<String, ImageBitmap>()
+
+@Composable
+private fun appIcon(pkg: String): ImageBitmap? {
+    val ctx = LocalContext.current
+    val cached = iconCache[pkg]
+    val state = androidx.compose.runtime.produceState(cached, pkg) {
+        if (value == null) value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            appBitmap(ctx, pkg)?.asImageBitmap()?.also { iconCache[pkg] = it }
+        }
+    }
+    return state.value
+}
 
 // ---- setup ---------------------------------------------------------------------------------------
 
@@ -371,17 +387,17 @@ private fun NewProfileFlow(m: Model, close: () -> Unit) {
             1 -> {
                 Text("Pick an app", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 var apps by remember { mutableStateOf<List<AppInfo>?>(null) }
-                LaunchedEffect(Unit) { apps = Apps.all(ctx) }
+                LaunchedEffect(Unit) { apps = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Apps.all(ctx) } }
                 val list = apps
                 if (list == null) Text("Reading the apps on the phone…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(list) { app ->
+                    items(list, key = { it.pkg }) { app ->
                         Row(Modifier.fillMaxWidth().clickable {
                             chosen = app
                             name = suggestName(app, m.store.profiles)
                             step = 2
                         }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val bmp = remember(app.pkg) { appBitmap(ctx, app.pkg)?.asImageBitmap() }
+                            val bmp = appIcon(app.pkg)
                             if (bmp != null) Image(bmp, null, Modifier.size(36.dp)) else Spacer(Modifier.size(36.dp))
                             Spacer(Modifier.width(12.dp))
                             Column {
