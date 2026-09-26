@@ -26,10 +26,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -474,26 +476,36 @@ private fun suggestName(app: AppInfo, existing: List<Profile>): String {
 @Composable
 fun MenuTab(m: Model) {
     m.tick
-    val profiles = m.store.profiles
+    val ctx = LocalContext.current
+    // Local order that follows drags smoothly; persisted to the store on each move.
+    var profiles by remember(m.tick) { mutableStateOf(m.store.profiles) }
+    val listState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        profiles = profiles.toMutableList().apply { add(to.index, removeAt(from.index)) }
+        m.store.profiles = profiles
+        Shortcuts.sync(ctx, m.store)
+    }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Long-press menu", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         SectionCard("What shows when you hold the icon",
-            "Choose which profiles appear, and their order. Most launchers show the first 4-5.",
-            listOf("The menu is on Browser Twins' own icon. Each profile shows its own icon there.",
-                   "Use the arrows to move a profile up or down.")) {
-            if (profiles.isEmpty()) Text("No profiles yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            profiles.forEachIndexed { i, p ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { m.store.profiles = move(m.store.profiles, i, -1); m.changed() }, enabled = i > 0) {
-                        Icon(Icons.Default.KeyboardArrowUp, "Move up")
-                    }
-                    IconButton(onClick = { m.store.profiles = move(m.store.profiles, i, 1); m.changed() }, enabled = i < profiles.size - 1) {
-                        Icon(Icons.Default.KeyboardArrowDown, "Move down")
-                    }
-                    Box(Modifier.weight(1f)) {
-                        SwitchRow(p.name, null, p.inMenu) { on ->
-                            m.store.profiles = m.store.profiles.map { if (it.id == p.id) it.copy(inMenu = on) else it }
-                            m.changed()
+            "Turn profiles on or off, and drag the handle to reorder. Most launchers show the first 4-5.",
+            listOf("The menu is on Browser Twins' own icon. Each profile shows its own icon there.")) {}
+        if (profiles.isEmpty()) Text("No profiles yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            items(profiles, key = { it.id }) { p ->
+                ReorderableItem(reorderState, key = p.id) { _ ->
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {}, modifier = Modifier.draggableHandle()) {
+                                Icon(Icons.Default.Menu, "Drag to reorder")
+                            }
+                            Box(Modifier.weight(1f)) {
+                                SwitchRow(p.name, null, p.inMenu) { on ->
+                                    profiles = profiles.map { if (it.id == p.id) it.copy(inMenu = on) else it }
+                                    m.store.profiles = profiles
+                                    m.changed()
+                                }
+                            }
                         }
                     }
                 }
@@ -599,11 +611,4 @@ private fun friendlyInstallError(raw: String): String = when {
     raw.contains("cancel", true) || raw.contains("ABORTED", true) ->
         "Install cancelled."
     else -> "Couldn't install the copy: $raw"
-}
-
-// Move item i by delta (-1 up, +1 down), returning a new list.
-private fun <T> move(list: List<T>, i: Int, delta: Int): List<T> {
-    val j = i + delta
-    if (j !in list.indices) return list
-    return list.toMutableList().apply { add(j, removeAt(i)) }
 }

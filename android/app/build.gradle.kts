@@ -14,8 +14,8 @@ android {
         applicationId = "com.husarp.browsertwins"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.5.2"
+        versionCode = 13
+        versionName = "0.5.3"
     }
 
     // The release key lives outside the project (never published): its file and passwords are in
@@ -70,6 +70,8 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
     // Runs the background check that keeps clones updated.
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // Drag-to-reorder for the long-press menu list.
+    implementation("sh.calvin.reorderable:reorderable:2.4.3")
 
     testImplementation("junit:junit:4.13.2")
 }
