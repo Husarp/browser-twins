@@ -14,8 +14,8 @@ android {
         applicationId = "com.husarp.browsertwins"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     // The release key lives outside the project (never published): its file and passwords are in
@@ -60,5 +60,14 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.material3:material3")
+
+    // The clone engine. ARSCLib rewrites an APK's package name in the binary manifest and resource
+    // table (the same ApkModule.setPackageName proven on the PC); apksig re-signs the result with our
+    // own key. Both are pure Java, so they run on the phone.
+    implementation("io.github.reandroid:ARSCLib:1.3.8")
+    implementation("com.android.tools.build:apksig:8.6.1")
+    // Makes the self-signed certificate for our signing key (Android has no built-in X.509 builder).
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
+
     testImplementation("junit:junit:4.13.2")
 }

@@ -261,22 +261,39 @@ private fun NewProfileFlow(m: Model, close: () -> Unit) {
                 val app = chosen!!
                 Text("Make it", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 SectionCard("Building ${name}", "From ${app.label} ${app.version}") {
+                    var busy by remember { mutableStateOf(false) }
                     val msg = result
-                    if (msg == null) {
-                        Button(onClick = {
+                    when {
+                        busy -> Text("Working… Android will ask to install.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        msg == null -> Button(onClick = {
+                            busy = true
                             val clonePkg = Cloner.clonePackageName(app.pkg, m.store.profiles)
-                            result = try {
-                                Cloner.clone(ctx, app, clonePkg)  // throws until the engine is finished
-                            } catch (e: Cloner.NotFinished) {
-                                m.store.addLog("Tried to make $name from ${app.label}", e.message ?: "")
-                                m.changed()
-                                e.message
-                            }
+                            Thread {
+                                try {
+                                    val parts = Cloner.build(ctx, app, clonePkg, name)
+                                    Installer.install(ctx, parts) { ok, m2 ->
+                                        if (ok) {
+                                            m.store.profiles = m.store.profiles + Profile(
+                                                java.util.UUID.randomUUID().toString(), name, app.pkg, clonePkg, app.version,
+                                                hue.toInt(), strength.toInt(), brightness.toInt(),
+                                            )
+                                            m.store.addLog("Made $name from ${app.label} ${app.version}")
+                                        } else m.store.addLog("Couldn't make $name", m2)
+                                        m.changed()
+                                        result = if (ok) "Done. $name is installed." else "Install failed: $m2"
+                                        busy = false
+                                    }
+                                } catch (e: Exception) {
+                                    m.store.addLog("Couldn't make $name", e.message ?: "")
+                                    m.changed(); result = "Failed: ${e.message}"; busy = false
+                                }
+                            }.start()
                         }, modifier = Modifier.fillMaxWidth()) { Text("Build and install") }
-                    } else {
-                        Text(msg)
-                        Spacer(Modifier.size(8.dp))
-                        Button(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Back to profiles") }
+                        else -> {
+                            Text(msg)
+                            Spacer(Modifier.size(8.dp))
+                            Button(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Back to profiles") }
+                        }
                     }
                 }
             }

@@ -4,8 +4,8 @@ Makes **copies (clones) of apps** already on your Android phone, so each copy is
 its own data. It's mainly for browsers — Android browsers have no profiles, so a clone gives you a
 "Work" and a "Home" Firefox — but any app works, e.g. a second Messenger for a second account.
 
-> **Status: early. The app builds and its screens work, but the clone engine is not finished yet** —
-> see [What works today](#what-works-today). This is a work in progress, not a usable app.
+> **Status: early.** The app builds and its screens work; the clone engine is written but not yet
+> tested inside the app — see [What works today](#what-works-today). Work in progress.
 
 ## What it does (the plan)
 
@@ -20,8 +20,10 @@ its own data. It's mainly for browsers — Android browsers have no profiles, so
 - The app builds and installs, with the Material 3 look of LinkPilot (dynamic colour on Android 12+).
 - Setup, and the four tabs: Profiles, Menu, Log, Settings.
 - Listing the apps on the phone and reading each one's APK.
-- **Not yet:** the clone engine (repackage an APK with a new package name, re-sign it, install it).
-  This is the hard core and the next task — see [`TODO.md`](TODO.md) (kept local) and the plan.
+- **The clone engine is written** (rename the package with ARSCLib, re-sign with apksig, install
+  with PackageInstaller) and wired to *New profile*. Its rename logic was tested on real apps
+  (Brave, Firefox, Messenger, a Unity game): each clone installs next to the original with its own
+  data. **Not yet run inside the app on a phone** — that's the next step.
 
 ## Building
 
