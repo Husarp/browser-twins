@@ -6,7 +6,9 @@ import android.graphics.BitmapFactory
 import com.android.apksig.ApkSigner
 import com.android.apksig.KeyConfig
 import com.reandroid.apk.ApkModule
+import com.reandroid.apk.ResFile
 import com.reandroid.archive.ByteInputSource
+import com.reandroid.arsc.value.ValueType
 import com.reandroid.arsc.chunk.xml.AndroidManifestBlock
 import com.reandroid.arsc.chunk.xml.ResXmlAttribute
 import com.reandroid.arsc.chunk.xml.ResXmlElement
@@ -34,19 +36,26 @@ object Cloner {
         val work = File(ctx.cacheDir, "clones/$clonePkg").apply { deleteRecursively(); mkdirs() }
         val signer = Keys(ctx).signer()
         val out = mutableListOf<File>()
+        val recolour = hue != 0 || strength != 100 || brightness != 100
+        // The launcher icon's resources, found from the base (always first in apkPaths) and then also
+        // recoloured in the splits - a density split (split_config.xhdpi.apk) often holds the very
+        // image the launcher shows.
+        val iconIds = HashSet<Int>()
 
         for (apk in apks) {
             val module = ApkModule.loadApkFile(apk)
             val oldPkg = module.packageName
             module.setPackageName(clonePkg)
             fixManifest(module.androidManifest, oldPkg, clonePkg)
-            // The base module carries the app label and launcher icon. ARSCLib's isBaseModule is
+            // The base module carries the app label and the icon reference. ARSCLib's isBaseModule is
             // unreliable for a standalone split APK, so detect the base by its manifest: the base has
             // no "split" attribute, the splits do.
             if (isBaseManifest(module.androidManifest)) {
-                module.androidManifest.setApplicationLabel(label)
-                if (hue != 0 || strength != 100 || brightness != 100) recolourIcon(module, hue, strength, brightness)
+                val mani = module.androidManifest
+                mani.setApplicationLabel(label)
+                if (recolour) iconIds += listOf(mani.iconResourceId, mani.roundIconResourceId).filter(::isAppRes)
             }
+            if (recolour && iconIds.isNotEmpty()) recolourIcon(module, iconIds, hue, strength, brightness)
 
             val renamed = File(work, "unsigned-${apk.name}")
             module.writeApk(renamed)
@@ -61,24 +70,71 @@ object Cloner {
         return out
     }
 
-    // Recolour the launcher icon inside the clone: every PNG under res/mipmap (where launcher icons
-    // live) is decoded, recoloured like LinkPilot's icons, and written back. Vector-only icons have no
-    // PNG to recolour, so they keep the original look (see TODO).
-    private fun recolourIcon(module: ApkModule, hue: Int, strength: Int, brightness: Int) {
-        for (src in module.listInputSources().toList()) {
-            val name = src.name
-            if (!name.startsWith("res/mipmap") || !name.endsWith(".png")) continue
-            try {
-                val bytes = src.openStream().use { it.readBytes() }
-                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
-                val out = ByteArrayOutputStream()
-                Recolour.apply(bmp, hue, strength, brightness).compress(Bitmap.CompressFormat.PNG, 100, out)
-                module.add(ByteInputSource(out.toByteArray(), name))   // replaces the entry of the same name
-            } catch (_: Exception) {
-                // leave that image as it is
+    // Recolour the launcher icon inside the clone by following its resources, whatever the files are
+    // called (apps often obfuscate them, e.g. Brave's foreground is res/PQv, a WebP):
+    //   manifest icon -> adaptive-icon / layer-list XML -> its drawable references -> ...
+    // Raster files (PNG, WebP, JPEG) are recoloured like LinkPilot's icons; vector drawables get every
+    // colour value (fill, stroke, gradient, tint) moved through the same matrix. Framework resources
+    // (e.g. a system white background) are left alone. [ids] grows as references are found, so the
+    // splits recolour the same resources the base pointed to.
+    private fun recolourIcon(module: ApkModule, ids: MutableSet<Int>, hue: Int, strength: Int, brightness: Int) {
+        val byId = HashMap<Int, MutableList<ResFile>>()
+        for (rf in module.listResFiles()) for (e in rf.entryList) byId.getOrPut(e.resourceId) { mutableListOf() }.add(rf)
+
+        val queue = ArrayDeque(ids)
+        val seen = HashSet<Int>()
+        val doneFiles = HashSet<String>()
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            if (!seen.add(id)) continue
+            for (rf in byId[id].orEmpty()) {
+                val path = rf.filePath ?: continue
+                if (!doneFiles.add(path) || path.endsWith(".9.png")) continue   // 9-patches would lose their chunks
+                val bytes = try { rf.inputSource.openStream().use { it.readBytes() } } catch (_: Exception) { continue }
+                val format = rasterFormat(bytes)
+                if (format != null) {
+                    try {
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
+                        val out = ByteArrayOutputStream()
+                        Recolour.apply(bmp, hue, strength, brightness).compress(format, if (format == Bitmap.CompressFormat.JPEG) 95 else 100, out)
+                        module.add(ByteInputSource(out.toByteArray(), path))   // replaces the entry of the same name
+                    } catch (_: Exception) { }
+                    continue
+                }
+                val doc = try { rf.readAsXmlDocument() } catch (_: Exception) { null } ?: continue
+                var changed = false
+                val els = doc.recursiveElements()
+                while (els.hasNext()) {
+                    val attrs = (els.next() as ResXmlElement).attributes
+                    while (attrs.hasNext()) {
+                        val a = attrs.next() as ResXmlAttribute
+                        val t = a.valueType ?: continue
+                        if (t == ValueType.REFERENCE) {
+                            if (isAppRes(a.data) && ids.add(a.data)) queue.add(a.data)   // foreground, layer, <bitmap src>…
+                        } else if (t.isColor) {
+                            a.data = Recolour.color(a.data, hue, strength, brightness)
+                            a.valueType = ValueType.COLOR_ARGB8
+                            changed = true
+                        }
+                    }
+                }
+                if (changed) module.add(ByteInputSource(doc.bytes, path))
             }
         }
     }
+
+    // A raster image's format by its first bytes, or null for anything else (e.g. binary XML).
+    private fun rasterFormat(b: ByteArray): Bitmap.CompressFormat? = when {
+        b.size > 8 && b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() && b[2] == 'N'.code.toByte() -> Bitmap.CompressFormat.PNG
+        b.size > 12 && b[0] == 'R'.code.toByte() && b[8] == 'W'.code.toByte() && b[9] == 'E'.code.toByte() ->
+            if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSLESS
+            else @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP
+        b.size > 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() -> Bitmap.CompressFormat.JPEG
+        else -> null
+    }
+
+    // An app's own resource (package id 0x7f), not the framework's (0x01) or unset (0).
+    private fun isAppRes(id: Int) = id != 0 && (id ushr 24) == 0x7f
 
     private fun sign(input: File, output: File, signer: Keys.Signer) {
         val config = ApkSigner.SignerConfig.Builder("BrowserTwins", KeyConfig.Jca(signer.privateKey), listOf(signer.certificate)).build()
