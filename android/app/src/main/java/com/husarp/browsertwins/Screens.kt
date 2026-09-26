@@ -151,8 +151,10 @@ fun ProfilesTab(m: Model) {
     m.tick
     var making by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Profile?>(null) }
+    var updating by remember { mutableStateOf<Profile?>(null) }
     if (making) { NewProfileFlow(m) { making = false }; return }
     editing?.let { EditProfileFlow(m, it) { editing = null }; return }
+    updating?.let { UpdateProfileFlow(m, it) { updating = null }; return }
 
     val profiles = m.store.profiles
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -161,7 +163,7 @@ fun ProfilesTab(m: Model) {
             SectionCard("No profiles yet", "Make a copy of a browser or another app to get started.") {}
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(profiles) { p -> ProfileRow(m, p) { editing = p } }
+                items(profiles) { p -> ProfileRow(m, p, onEdit = { editing = p }, onUpdate = { updating = p }) }
             }
         }
         Button(onClick = { making = true }, modifier = Modifier.fillMaxWidth()) {
@@ -171,12 +173,15 @@ fun ProfilesTab(m: Model) {
 }
 
 @Composable
-private fun ProfileRow(m: Model, p: Profile, onEdit: () -> Unit) {
+private fun ProfileRow(m: Model, p: Profile, onEdit: () -> Unit, onUpdate: () -> Unit) {
     val ctx = LocalContext.current
     val icon = remember(p.sourcePkg, p.hue, p.strength, p.brightness) {
         appBitmap(ctx, p.sourcePkg)?.let { Recolour.apply(it, p.hue, p.strength, p.brightness).asImageBitmap() }
     }
     val installed = remember(p.clonePkg, m.tick) { Apps.isInstalled(ctx, p.clonePkg) }
+    // The original was updated if its installed version differs from the one this clone was built from.
+    val newVersion = remember(p.sourcePkg, m.tick) { if (Apps.isInstalled(ctx, p.sourcePkg)) Apps.version(ctx, p.sourcePkg) else "" }
+    val updateReady = installed && newVersion.isNotEmpty() && newVersion != p.madeFromVersion
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -184,13 +189,20 @@ private fun ProfileRow(m: Model, p: Profile, onEdit: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleMedium)
-                    Text(if (installed) "${Apps.label(ctx, p.sourcePkg)} ${p.madeFromVersion}" else "Not installed - tap Remove",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (installed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                    val (line, warn) = when {
+                        !installed -> "Not installed - tap Remove" to true
+                        updateReady -> "Update ready: ${Apps.label(ctx, p.sourcePkg)} $newVersion" to false
+                        else -> "${Apps.label(ctx, p.sourcePkg)} ${p.madeFromVersion}" to false
+                    }
+                    Text(line, style = MaterialTheme.typography.bodySmall,
+                        color = when { warn -> MaterialTheme.colorScheme.error
+                                       updateReady -> MaterialTheme.colorScheme.primary
+                                       else -> MaterialTheme.colorScheme.onSurfaceVariant },
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                if (updateReady) TextButton(onClick = onUpdate) { Text("Update") }
                 if (installed) TextButton(onClick = {
                     ctx.packageManager.getLaunchIntentForPackage(p.clonePkg)?.let { ctx.startActivity(it) }
                 }) { Text("Open") }
@@ -269,6 +281,56 @@ private fun EditProfileFlow(m: Model, p: Profile, close: () -> Unit) {
             else -> {
                 Text(msg)
                 Button(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Back to profiles") }
+            }
+        }
+    }
+}
+
+// ---- Update a clone from the newer original; data is kept -----------------------------------------
+
+@Composable
+private fun UpdateProfileFlow(m: Model, p: Profile, close: () -> Unit) {
+    val ctx = LocalContext.current
+    val newVersion = remember(p.sourcePkg) { Apps.version(ctx, p.sourcePkg) }
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = close) { Text("Back") }
+        }
+        Text("Update ${p.name}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        SectionCard("From ${Apps.label(ctx, p.sourcePkg)}", "${p.madeFromVersion}  ->  $newVersion",
+            listOf("The copy is rebuilt from the updated app and installed over itself. Your data in the copy is kept.")) {
+            when (val msg = result) {
+                null -> if (busy) Text("Rebuilding… Android may ask to install. Your data is kept.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else Button(modifier = Modifier.fillMaxWidth(), onClick = {
+                    busy = true
+                    val src = AppInfo(p.sourcePkg, Apps.label(ctx, p.sourcePkg), newVersion, false)
+                    Thread {
+                        try {
+                            val parts = Cloner.build(ctx, src, p.clonePkg, p.name, p.hue, p.strength, p.brightness)
+                            Installer.install(ctx, parts) { ok, m2 ->
+                                if (ok) {
+                                    m.store.profiles = m.store.profiles.map { if (it.id == p.id) it.copy(madeFromVersion = newVersion) else it }
+                                    m.store.addLog("${p.name} updated to $newVersion (data kept)")
+                                } else m.store.addLog("Couldn't update ${p.name}", m2)
+                                m.changed()
+                                result = if (ok) "Updated to $newVersion." else friendlyInstallError(m2)
+                                busy = false
+                            }
+                        } catch (e: Exception) {
+                            m.store.addLog("Couldn't update ${p.name}", e.message ?: ""); m.changed()
+                            result = "Failed: ${e.message}"; busy = false
+                        }
+                    }.start()
+                }) { Text("Update and install") }
+                else -> {
+                    Text(msg)
+                    Spacer(Modifier.size(8.dp))
+                    Button(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Back to profiles") }
+                }
             }
         }
     }
