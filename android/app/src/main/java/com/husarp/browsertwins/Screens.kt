@@ -28,11 +28,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -129,15 +132,18 @@ fun SetupScreen(m: Model, done: () -> Unit) {
     val ctx = LocalContext.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Browser Twins", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("Make copies of your apps, each with its own logins and data.",
+            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SectionCard("How it works",
-            "A profile is a copy of an app with its own data.",
+            "A profile is a copy of an app, with its own data.",
             listOf(
-                "Each copy is a separate app on the phone, with its own logins, cookies, tabs and history.",
-                "Mainly for browsers, which have no profiles on Android - but any app works, e.g. a second Messenger.",
-                "Works offline: no internet permission. New versions come from the app already on the phone.",
+                "Each copy is a separate app on the phone - its own logins, cookies, tabs and history.",
+                "Made for browsers (Android gives them no profiles), but any app works - like a second Messenger.",
+                "Copies stay up to date with the original app, keeping their data.",
+                "Works offline: Browser Twins has no internet permission. Copies are built from the app already on your phone.",
             )) {}
-        SectionCard("Allow installing apps",
-            "Needed so Browser Twins can install the profiles it makes.") {
+        SectionCard("One thing to allow",
+            "Turn on \"Install unknown apps\" for Browser Twins, so it can install the copies it makes.") {
             OutlinedButton(onClick = {
                 try { ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))) }
                 catch (_: Exception) { ctx.startActivity(Intent(Settings.ACTION_SETTINGS)) }
@@ -472,13 +478,24 @@ fun MenuTab(m: Model) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Long-press menu", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         SectionCard("What shows when you hold the icon",
-            "Choose which profiles appear. Most launchers show the first 4-5.",
-            listOf("The menu is on Browser Twins' own icon. Each profile shows its own icon there.")) {
+            "Choose which profiles appear, and their order. Most launchers show the first 4-5.",
+            listOf("The menu is on Browser Twins' own icon. Each profile shows its own icon there.",
+                   "Use the arrows to move a profile up or down.")) {
             if (profiles.isEmpty()) Text("No profiles yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            profiles.forEach { p ->
-                SwitchRow(p.name, null, p.inMenu) { on ->
-                    m.store.profiles = m.store.profiles.map { if (it.id == p.id) it.copy(inMenu = on) else it }
-                    m.changed()
+            profiles.forEachIndexed { i, p ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { m.store.profiles = move(m.store.profiles, i, -1); m.changed() }, enabled = i > 0) {
+                        Icon(Icons.Default.KeyboardArrowUp, "Move up")
+                    }
+                    IconButton(onClick = { m.store.profiles = move(m.store.profiles, i, 1); m.changed() }, enabled = i < profiles.size - 1) {
+                        Icon(Icons.Default.KeyboardArrowDown, "Move down")
+                    }
+                    Box(Modifier.weight(1f)) {
+                        SwitchRow(p.name, null, p.inMenu) { on ->
+                            m.store.profiles = m.store.profiles.map { if (it.id == p.id) it.copy(inMenu = on) else it }
+                            m.changed()
+                        }
+                    }
                 }
             }
         }
@@ -558,7 +575,9 @@ fun SettingsTab(m: Model, showSetup: () -> Unit) {
         }
 
         SectionCard("About", null) {
-            Text("Works offline - no internet permission.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val version = remember { try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName } catch (_: Exception) { null } }
+            Text("Browser Twins${version?.let { " $it" } ?: ""}", style = MaterialTheme.typography.bodyMedium)
+            Text("Works offline - no internet permission.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = showSetup) { Text("Show the setup again") }
         }
     }
@@ -575,4 +594,11 @@ private fun friendlyInstallError(raw: String): String = when {
     raw.contains("cancel", true) || raw.contains("ABORTED", true) ->
         "Install cancelled."
     else -> "Couldn't install the copy: $raw"
+}
+
+// Move item i by delta (-1 up, +1 down), returning a new list.
+private fun <T> move(list: List<T>, i: Int, delta: Int): List<T> {
+    val j = i + delta
+    if (j !in list.indices) return list
+    return list.toMutableList().apply { add(j, removeAt(i)) }
 }

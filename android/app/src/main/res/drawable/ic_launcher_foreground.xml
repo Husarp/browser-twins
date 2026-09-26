@@ -1,15 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Placeholder logo: two overlapping rounded squares - "twins" / a copy. Replace with the real
-     Browser Twins logo later (see TODO). -->
+<!-- Browser Twins: two overlapping browser windows (a copy / "twins"). White on the purple
+     adaptive-icon background; the front window shows a browser address bar in the brand purple. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- back window (the twin), slightly faded -->
     <path
-        android:fillColor="#66FFFFFF"
-        android:pathData="M40,40 m0,6 a6,6 0 0 1 6,-6 h22 a6,6 0 0 1 6,6 v22 a6,6 0 0 1 -6,6 h-22 a6,6 0 0 1 -6,-6 z" />
+        android:fillColor="#80FFFFFF"
+        android:pathData="M33,26 H61 A7,7 0 0 1 68,33 V59 A7,7 0 0 1 61,66 H33 A7,7 0 0 1 26,59 V33 A7,7 0 0 1 33,26 Z" />
+    <!-- front window -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M34,34 m0,6 a6,6 0 0 1 6,-6 h22 a6,6 0 0 1 6,6 v22 a6,6 0 0 1 -6,6 h-22 a6,6 0 0 1 -6,-6 z" />
+        android:pathData="M47,42 H75 A7,7 0 0 1 82,49 V75 A7,7 0 0 1 75,82 H47 A7,7 0 0 1 40,75 V49 A7,7 0 0 1 47,42 Z" />
+    <!-- front window: address bar -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M50,50 H72 A3,3 0 0 1 75,53 A3,3 0 0 1 72,56 H50 A3,3 0 0 1 47,53 A3,3 0 0 1 50,50 Z" />
+    <!-- front window: a line of content -->
+    <path
+        android:fillColor="#B3A5D6"
+        android:pathData="M49,62 H65 A2,2 0 0 1 67,64 A2,2 0 0 1 65,66 H49 A2,2 0 0 1 47,64 A2,2 0 0 1 49,62 Z" />
 </vector>
