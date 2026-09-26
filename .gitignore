@@ -1,0 +1,19 @@
+# Working notes - kept locally, not published.
+PLAN.md
+TODO.md
+CHANGELOG.md
+
+# Android build output and local machine config.
+android/.gradle/
+android/.kotlin/
+android/.idea/
+android/build/
+android/app/build/
+android/local.properties
+*.iml
+captures/
+
+# Never commit signing keys.
+*.jks
+*.keystore
+*-signing.properties
