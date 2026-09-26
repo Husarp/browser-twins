@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.WorkManager
@@ -26,13 +28,20 @@ object AutoUpdate {
             .setConstraints(constraints).build()
         wm.enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.UPDATE, req)
     }
+
+    // Run the update check right now (the "Check for updates now" button).
+    fun checkNow(ctx: Context) {
+        WorkManager.getInstance(ctx).enqueueUniqueWork(
+            "check-now", ExistingWorkPolicy.REPLACE, OneTimeWorkRequestBuilder<UpdateWorker>().build())
+    }
 }
 
 class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
+        // The periodic check is only scheduled while auto-update is on; "Check for updates now" runs
+        // this on demand regardless. Either way, just update whatever is out of date.
         val ctx = applicationContext
         val store = Store(ctx)
-        if (!store.autoUpdate) return Result.success()
         for (p in store.profiles) {
             if (!Apps.isInstalled(ctx, p.clonePkg) || !Apps.isInstalled(ctx, p.sourcePkg)) continue
             val v = Apps.version(ctx, p.sourcePkg)

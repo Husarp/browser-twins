@@ -546,6 +546,11 @@ fun SettingsTab(m: Model, showSetup: () -> Unit) {
                 store.onlyWhenCharging = it; AutoUpdate.apply(ctx, store); m.changed()
             }
             SwitchRow("Notify me", null, store.notify) { store.notify = it; m.changed() }
+            var checkNote by remember { mutableStateOf<String?>(null) }
+            OutlinedButton(onClick = { AutoUpdate.checkNow(ctx); checkNote = "Checking… any updates install in the background." }) {
+                Text("Check for updates now")
+            }
+            checkNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
 
         SectionCard("Signing key", "Needed to update profiles without losing their data.",

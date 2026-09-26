@@ -40,7 +40,10 @@ object Cloner {
             val oldPkg = module.packageName
             module.setPackageName(clonePkg)
             fixManifest(module.androidManifest, oldPkg, clonePkg)
-            if (module.isBaseModule) {
+            // The base module carries the app label and launcher icon. ARSCLib's isBaseModule is
+            // unreliable for a standalone split APK, so detect the base by its manifest: the base has
+            // no "split" attribute, the splits do.
+            if (isBaseManifest(module.androidManifest)) {
                 module.androidManifest.setApplicationLabel(label)
                 if (hue != 0 || strength != 100 || brightness != 100) recolourIcon(module, hue, strength, brightness)
             }
@@ -132,6 +135,13 @@ object Cloner {
     // package so two installed apps never declare the same permission name.
     private fun uniquePerm(p: String, oldPkg: String, newPkg: String) =
         if (p == oldPkg || p.startsWith("$oldPkg.")) renameOne(p, oldPkg, newPkg) else "$newPkg.$p"
+
+    // The base APK's manifest has no "split" attribute; feature/config splits do.
+    private fun isBaseManifest(mani: AndroidManifestBlock): Boolean {
+        val attrs = mani.manifestElement.attributes
+        while (attrs.hasNext()) if (local((attrs.next() as ResXmlAttribute).name) == "split") return false
+        return true
+    }
 
     private fun nameAttr(e: ResXmlElement): ResXmlAttribute? {
         val attrs = e.attributes
