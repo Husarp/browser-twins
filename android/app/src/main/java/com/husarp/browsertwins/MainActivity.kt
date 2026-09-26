@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         model = Model(applicationContext)
+        AutoUpdate.apply(applicationContext, model.store)   // match the schedule to the setting
         setContent { App(model) }
     }
 

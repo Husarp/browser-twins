@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 
 // One app on the phone that can be cloned.
-data class AppInfo(val pkg: String, val label: String, val version: String, val isBrowser: Boolean)
+data class AppInfo(val pkg: String, val label: String, val version: String, val isBrowser: Boolean, val isSystem: Boolean = false)
 
 // The apps on the phone (those with a launcher icon: browsers, Messenger...), and how to read one's
 // APK for cloning. Uses the <queries> LAUNCHER filter in the manifest - no all-packages permission.
@@ -21,7 +21,7 @@ object Apps {
         val apps = pm.queryIntentActivities(launcher, 0).mapNotNull { ri ->
             val pkg = ri.activityInfo.packageName
             if (pkg == self) return@mapNotNull null
-            AppInfo(pkg, label(ctx, pkg), version(ctx, pkg), pkg in browsers)
+            AppInfo(pkg, label(ctx, pkg), version(ctx, pkg), pkg in browsers, isSystem(ctx, pkg))
         }.distinctBy { it.pkg }
         return apps.sortedWith(compareByDescending<AppInfo> { it.isBrowser }.thenBy { it.label.lowercase() })
     }
@@ -42,6 +42,12 @@ object Apps {
     // Whether a package is installed (clones have a launcher, so they're visible to us).
     fun isInstalled(ctx: Context, pkg: String): Boolean = try {
         ctx.packageManager.getPackageInfo(pkg, 0); true
+    } catch (_: Exception) { false }
+
+    // A built-in system app - these often can't be cloned (their resources don't load when rewritten).
+    fun isSystem(ctx: Context, pkg: String): Boolean = try {
+        val f = ctx.packageManager.getApplicationInfo(pkg, 0).flags
+        (f and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
     } catch (_: Exception) { false }
 
     // The APK files of an installed app. Modern apps ship several (a base APK plus splits); the clone

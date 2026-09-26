@@ -4,6 +4,10 @@
     <!-- To install the clones it builds. Android still shows its own "Install?" question the first
          time; on Android 12+ later updates of apps it installed can be silent. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Update a clone we installed without a tap (Android 12+), for background auto-update. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- To tell you a clone was updated, or that an update needs a tap (older Android). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Which apps it can see: everything with a launcher icon (browsers, Messenger...), to list them
          and read their APK for cloning. -->
@@ -31,6 +35,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Result of a background (auto-update) install: updates the profile, or notifies if a tap
+             is needed. Not exported - only the system installer sends to it. -->
+        <receiver android:name=".InstallReceiver" android:exported="false" />
 
         <!-- Where the OS hands back an APK it finished installing (used by the clone engine). -->
         <provider

@@ -24,6 +24,18 @@ class Keys(ctx: Context) {
 
     data class Signer(val privateKey: PrivateKey, val certificate: X509Certificate)
 
+    // Copy the signing key out to a file the user picked (make it first if needed). Losing this key
+    // means clones can no longer be updated without losing their data, so it is worth backing up.
+    fun exportTo(out: java.io.OutputStream) {
+        if (!file.exists()) signer()   // make sure the key exists before backing it up
+        file.inputStream().use { it.copyTo(out) }
+    }
+
+    // Replace the signing key from a backup the user picked.
+    fun importFrom(inp: java.io.InputStream) {
+        file.outputStream().use { inp.copyTo(it) }
+    }
+
     fun signer(): Signer {
         val store = KeyStore.getInstance("PKCS12")
         if (file.exists()) {

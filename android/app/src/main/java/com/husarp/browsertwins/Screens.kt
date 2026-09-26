@@ -3,7 +3,10 @@ package com.husarp.browsertwins
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -375,7 +378,9 @@ private fun NewProfileFlow(m: Model, close: () -> Unit) {
                             Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(app.label + if (app.isBrowser) "  ·  browser" else "")
-                                Text(app.version, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (app.isSystem) Text("${app.version}  ·  system app - may not copy",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                else Text(app.version, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -512,18 +517,39 @@ fun SettingsTab(m: Model, showSetup: () -> Unit) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
         SectionCard("Updates", "Keep profiles up to date with the original app.",
-            listOf("On Android 12+ updates can be silent. On older Android each one needs a tap.")) {
-            SwitchRow("Update automatically", "No taps on Android 12+", store.autoUpdate) { store.autoUpdate = it; m.changed() }
-            SwitchRow("Only while charging", "Rebuilding uses some battery", store.onlyWhenCharging) { store.onlyWhenCharging = it; m.changed() }
+            listOf("A daily background check rebuilds a clone when its app has a newer version.",
+                   "On Android 12+ it's silent. On older Android a notification asks for one tap.")) {
+            val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            SwitchRow("Update automatically", "Clones keep themselves up to date", store.autoUpdate) {
+                store.autoUpdate = it
+                if (it && Build.VERSION.SDK_INT >= 33) askNotif.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                AutoUpdate.apply(ctx, store); m.changed()
+            }
+            SwitchRow("Only while charging", "Rebuilding uses some battery", store.onlyWhenCharging) {
+                store.onlyWhenCharging = it; AutoUpdate.apply(ctx, store); m.changed()
+            }
             SwitchRow("Notify me", null, store.notify) { store.notify = it; m.changed() }
         }
 
         SectionCard("Signing key", "Needed to update profiles without losing their data.",
             listOf("Every clone is signed with this key. Lose it and clones can't be updated without losing data. Back it up.")) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { /* TODO: back up key */ }) { Text("Back up key") }
-                OutlinedButton(onClick = { /* TODO: restore key */ }) { Text("Restore key") }
+            var note by remember { mutableStateOf<String?>(null) }
+            val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+                note = if (uri == null) null else try {
+                    ctx.contentResolver.openOutputStream(uri)!!.use { Keys(ctx).exportTo(it) }; "Key backed up."
+                } catch (e: Exception) { "Backup failed: ${e.message}" }
             }
+            val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                note = if (uri == null) null else try {
+                    ctx.contentResolver.openInputStream(uri)!!.use { Keys(ctx).importFrom(it) }
+                    "Key restored. New clones and updates will use it."
+                } catch (e: Exception) { "Restore failed: ${e.message}" }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { backup.launch("browsertwins-key.p12") }) { Text("Back up key") }
+                OutlinedButton(onClick = { restore.launch(arrayOf("*/*")) }) { Text("Restore key") }
+            }
+            note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
 
         SectionCard("Log", null) {

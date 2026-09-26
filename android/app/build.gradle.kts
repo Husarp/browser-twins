@@ -14,8 +14,8 @@ android {
         applicationId = "com.husarp.browsertwins"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.4.0"
+        versionCode = 10
+        versionName = "0.5.0"
     }
 
     // The release key lives outside the project (never published): its file and passwords are in
@@ -68,6 +68,8 @@ dependencies {
     implementation("com.android.tools.build:apksig:8.6.1")
     // Makes the self-signed certificate for our signing key (Android has no built-in X.509 builder).
     implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
+    // Runs the background check that keeps clones updated.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     testImplementation("junit:junit:4.13.2")
 }
