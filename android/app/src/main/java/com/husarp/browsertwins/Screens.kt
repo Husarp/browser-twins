@@ -256,7 +256,7 @@ private fun EditProfileFlow(m: Model, p: Profile, close: () -> Unit) {
                                     m.store.addLog("$name updated")
                                 } else m.store.addLog("Couldn't update $name", m2)
                                 m.changed()
-                                result = if (ok) "Saved." else "Failed: $m2"
+                                result = if (ok) "Saved." else friendlyInstallError(m2)
                                 busy = false
                             }
                         } catch (e: Exception) {
@@ -361,7 +361,7 @@ private fun NewProfileFlow(m: Model, close: () -> Unit) {
                                             m.store.addLog("Made $name from ${app.label} ${app.version}")
                                         } else m.store.addLog("Couldn't make $name", m2)
                                         m.changed()
-                                        result = if (ok) "Done. $name is installed." else "Install failed: $m2"
+                                        result = if (ok) "Done. $name is installed." else friendlyInstallError(m2)
                                         busy = false
                                     }
                                 } catch (e: Exception) {
@@ -474,4 +474,17 @@ fun SettingsTab(m: Model, showSetup: () -> Unit) {
             TextButton(onClick = showSetup) { Text("Show the setup again") }
         }
     }
+}
+
+// Turn Android's raw install error into something a person can act on.
+private fun friendlyInstallError(raw: String): String = when {
+    raw.contains("PARSE_FAILED", true) || raw.contains("load asset path", true) ->
+        "This app can't be copied. Android wouldn't accept the copy's files - some apps, often the phone's built-in ones, can't be cloned this way."
+    raw.contains("DUPLICATE_PERMISSION", true) || raw.contains("CONFLICTING_PROVIDER", true) ->
+        "This app can't be copied - the copy clashes with the original."
+    raw.contains("INSUFFICIENT_STORAGE", true) ->
+        "Not enough free space to install the copy."
+    raw.contains("cancel", true) || raw.contains("ABORTED", true) ->
+        "Install cancelled."
+    else -> "Couldn't install the copy: $raw"
 }
