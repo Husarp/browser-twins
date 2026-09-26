@@ -150,7 +150,9 @@ fun SetupScreen(m: Model, done: () -> Unit) {
 fun ProfilesTab(m: Model) {
     m.tick
     var making by rememberSaveable { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Profile?>(null) }
     if (making) { NewProfileFlow(m) { making = false }; return }
+    editing?.let { EditProfileFlow(m, it) { editing = null }; return }
 
     val profiles = m.store.profiles
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -159,7 +161,7 @@ fun ProfilesTab(m: Model) {
             SectionCard("No profiles yet", "Make a copy of a browser or another app to get started.") {}
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(profiles) { p -> ProfileRow(m, p) }
+                items(profiles) { p -> ProfileRow(m, p) { editing = p } }
             }
         }
         Button(onClick = { making = true }, modifier = Modifier.fillMaxWidth()) {
@@ -169,33 +171,105 @@ fun ProfilesTab(m: Model) {
 }
 
 @Composable
-private fun ProfileRow(m: Model, p: Profile) {
+private fun ProfileRow(m: Model, p: Profile, onEdit: () -> Unit) {
     val ctx = LocalContext.current
     val icon = remember(p.sourcePkg, p.hue, p.strength, p.brightness) {
         appBitmap(ctx, p.sourcePkg)?.let { Recolour.apply(it, p.hue, p.strength, p.brightness).asImageBitmap() }
     }
+    val installed = remember(p.clonePkg, m.tick) { Apps.isInstalled(ctx, p.clonePkg) }
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) Image(icon, null, Modifier.size(40.dp)) else Spacer(Modifier.size(40.dp))
-            Spacer(Modifier.width(12.dp))
-            val installed = remember(p.clonePkg, m.tick) { Apps.isInstalled(ctx, p.clonePkg) }
-            Column(Modifier.weight(1f)) {
-                Text(p.name, style = MaterialTheme.typography.titleMedium)
-                Text(if (installed) "${Apps.label(ctx, p.sourcePkg)} ${p.madeFromVersion}" else "Not installed - tap Remove",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (installed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (icon != null) Image(icon, null, Modifier.size(40.dp)) else Spacer(Modifier.size(40.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(p.name, style = MaterialTheme.typography.titleMedium)
+                    Text(if (installed) "${Apps.label(ctx, p.sourcePkg)} ${p.madeFromVersion}" else "Not installed - tap Remove",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (installed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-            if (installed) TextButton(onClick = {
-                ctx.packageManager.getLaunchIntentForPackage(p.clonePkg)?.let { ctx.startActivity(it) }
-            }) { Text("Open") }
-            TextButton(onClick = {
-                // Uninstall the clone (Android asks its own "Uninstall?"), then drop the record.
-                if (installed) ctx.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:${p.clonePkg}")))
-                m.store.profiles = m.store.profiles.filterNot { it.id == p.id }
-                m.store.addLog("${p.name} removed")
-                m.changed()
-            }) { Text("Remove") }
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                if (installed) TextButton(onClick = {
+                    ctx.packageManager.getLaunchIntentForPackage(p.clonePkg)?.let { ctx.startActivity(it) }
+                }) { Text("Open") }
+                TextButton(onClick = onEdit) { Text("Edit") }
+                TextButton(onClick = {
+                    // Uninstall the clone (Android asks its own "Uninstall?"), then drop the record.
+                    if (installed) ctx.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:${p.clonePkg}")))
+                    m.store.profiles = m.store.profiles.filterNot { it.id == p.id }
+                    m.store.addLog("${p.name} removed")
+                    m.changed()
+                }) { Text("Remove") }
+            }
+        }
+    }
+}
+
+// ---- Edit an existing profile (name + colour); rebuild keeps the data --------------------------
+
+@Composable
+private fun EditProfileFlow(m: Model, p: Profile, close: () -> Unit) {
+    val ctx = LocalContext.current
+    var name by rememberSaveable { mutableStateOf(p.name) }
+    var hue by rememberSaveable { mutableStateOf(p.hue.toFloat()) }
+    var strength by rememberSaveable { mutableStateOf(p.strength.toFloat()) }
+    var brightness by rememberSaveable { mutableStateOf(p.brightness.toFloat()) }
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = close) { Text("Cancel") }
+            Spacer(Modifier.weight(1f))
+            Text("Edit profile", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("Name and icon", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        val preview = remember(p.sourcePkg, hue, strength, brightness) {
+            appBitmap(ctx, p.sourcePkg)?.let { Recolour.apply(it, hue.toInt(), strength.toInt(), brightness.toInt()).asImageBitmap() }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            if (preview != null) Image(preview, null, Modifier.size(56.dp))
+            Text(name.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium)
+        }
+        OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+        SliderRow("Colour", hue, -180f, 180f) { hue = it }
+        SliderRow("Strength", strength, 0f, 200f) { strength = it }
+        SliderRow("Brightness", brightness, 50f, 150f) { brightness = it }
+        when (val msg = result) {
+            null -> if (busy) Text("Rebuilding… Android will ask to install. Your data is kept.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { hue = 0f; strength = 100f; brightness = 100f }) { Text("Reset") }
+                Button(enabled = name.isNotBlank(), onClick = {
+                    busy = true
+                    val src = AppInfo(p.sourcePkg, Apps.label(ctx, p.sourcePkg), Apps.version(ctx, p.sourcePkg), false)
+                    Thread {
+                        try {
+                            val parts = Cloner.build(ctx, src, p.clonePkg, name, hue.toInt(), strength.toInt(), brightness.toInt())
+                            Installer.install(ctx, parts) { ok, m2 ->
+                                if (ok) {
+                                    m.store.profiles = m.store.profiles.map {
+                                        if (it.id == p.id) it.copy(name = name, hue = hue.toInt(), strength = strength.toInt(), brightness = brightness.toInt()) else it
+                                    }
+                                    m.store.addLog("$name updated")
+                                } else m.store.addLog("Couldn't update $name", m2)
+                                m.changed()
+                                result = if (ok) "Saved." else "Failed: $m2"
+                                busy = false
+                            }
+                        } catch (e: Exception) {
+                            m.store.addLog("Couldn't update $name", e.message ?: ""); m.changed()
+                            result = "Failed: ${e.message}"; busy = false
+                        }
+                    }.start()
+                }) { Text("Save") }
+            }
+            else -> {
+                Text(msg)
+                Button(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Back to profiles") }
+            }
         }
     }
 }
