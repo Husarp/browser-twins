@@ -34,4 +34,6 @@ its own data. It's mainly for browsers — Android browsers have no profiles, so
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+**All rights reserved** — © 2026 Husarp. The code is public to read, and the releases are free to
+download and use, but the app may not be copied, changed, shared, sold or built upon without
+written permission. Full terms in [LICENSE](LICENSE).
